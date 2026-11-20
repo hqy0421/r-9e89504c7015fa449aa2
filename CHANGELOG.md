@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- Add `pdfplumber.amounts`, an exact constraint-based cleaner for locale-ambiguous amounts in extracted tables (e.g. `1,000` as one thousand vs. one). `amounts.clean(...)` parses each cell under the declared `NumberFormat`s, enforces the declared row/column subtotal relations across the whole table, and materializes only the values that are unique across all feasible interpretations; ambiguous cells report their possible values, unreconcilable totals are reported as conflicts, blank/missing cells are never treated as zero, and all arithmetic is exact (`Decimal`, no floats).
+
 ## [0.11.10] — 2026-06-14
 
 ### Changed

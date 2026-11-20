@@ -20,6 +20,7 @@ __To report a bug__ or request a feature, please [file an issue](https://github.
 - [Visual debugging](#visual-debugging)
 - [Extracting text](#extracting-text)
 - [Extracting tables](#extracting-tables)
+- [Cleaning locale-ambiguous amounts](#cleaning-locale-ambiguous-amounts)
 - [Extracting form values](#extracting-form-values)
 - [Demonstrations](#demonstrations)
 - [Comparison to other libraries](#comparison-to-other-libraries)
@@ -447,6 +448,41 @@ Both `vertical_strategy` and `horizontal_strategy` accept the following options:
 - Often it's helpful to crop a page — `Page.crop(bounding_box)` — before trying to extract the table.
 
 - Table extraction for `pdfplumber` was radically redesigned for `v0.5.0`, and introduced breaking changes.
+
+## Cleaning locale-ambiguous amounts
+
+Extracted cell *text* can be ambiguous: in financial tables that mix regional conventions, `1,000` may mean one thousand (thousands separator `,`) or exactly one (decimal separator `,`). The `pdfplumber.amounts` module resolves that ambiguity *globally* instead of guessing per cell. Declare the candidate `NumberFormat`s and the table's known subtotal structure; `amounts.clean(...)` then searches for **all** table-wide interpretations that satisfy every total simultaneously, and reports what is — and is not — determined:
+
+```python
+import pdfplumber
+from pdfplumber import amounts
+
+formats = [amounts.NumberFormat.en(), amounts.NumberFormat.de()]
+relations = [
+    amounts.Relation(axis="row", total=8, addends=(4, 5, 6, 7)),   # subtotal row
+    amounts.Relation(axis="column", total=3, addends=(1, 2)),      # total column
+]
+
+with pdfplumber.open("report.pdf") as pdf:
+    table = pdf.pages[0].find_tables()[0]
+    result = amounts.clean(table, formats=formats, relations=relations)
+
+result.to_rows()   # one Decimal per cell, but only where the value is
+                   # identical across *all* feasible interpretations;
+                   # everything else is None
+result.cells[4][1].possible   # values still possible for an ambiguous cell
+result.conflicts              # totals no interpretation can satisfy
+result.indeterminate          # relations skipped over blank/missing cells
+```
+
+Notes:
+
+- `source` may also be a plain grid of cells (`None`, `"text"`, `("text", bbox)`, or `amounts.CellInput`), e.g. `amounts.clean([["1,000", "2,000"], ...], formats=formats)`.
+- `Relation(axis="row"/"column", total=..., addends=..., within=...)` expands one relation per column/row (`within` restricts which ones); `SumConstraint(total=(r, c), addends=((r1, c1), ...))` targets explicit cells.
+- Each cell's original text and page `bbox` are preserved in `result.cells`.
+- Blank or missing cells are never treated as zero: a relation that references one is reported as indeterminate and left out of the search.
+- All arithmetic is exact (`decimal.Decimal` over integers). Floats are never used, and totals are never "balanced" by rounding or epsilon comparisons.
+- If a search budget (`solution_limit` / `node_budget`) is exhausted, `result.complete` is `False`; resolved values remain guaranteed-unique, while ambiguous cells may list more `possible` values than are truly feasible.
 
 
 ## Extracting form values
